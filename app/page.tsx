@@ -133,7 +133,7 @@ export default function Home() {
           price: Number(item.price) || 0,
           shared_by: item.shared_by || []
         }));
-        setBillItems(newItems);
+        setBillItems(prev => [...prev, ...newItems]);
         await syncToGoogleSheetsCloud(newItems);
       } else {
         alert(json.error || 'AI interpretation failed.');
