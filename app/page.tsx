@@ -1,7 +1,7 @@
 // Path: app/page.tsx
 'use client';
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { Check, Copy, PackagePlus, Users, Wand2, ArrowLeftRight, ImagePlus, X, History, Trash2, ShieldCheck, Activity, Wallet } from 'lucide-react';
+import { Check, PackagePlus, Users, Wand2, ArrowLeftRight, ImagePlus, X, History, Trash2, ShieldCheck, Activity, Wallet } from 'lucide-react';
 
 interface ExpenseItem {
   id: string;
@@ -23,6 +23,7 @@ export default function Home() {
   const [savedSessions, setSavedSessions] = useState<any[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // โหลดประวัติจาก Google Sheets ผ่าน API หลังบ้านมึง
   const loadHistoryFromSheets = async () => {
     setHistoryLoading(true);
     try {
@@ -30,7 +31,9 @@ export default function Home() {
       formData.append('action', 'load_history');
       const res = await fetch('/api/gemini', { method: 'POST', body: formData });
       const json = await res.json();
-      if (json.success) setSavedSessions(json.history || []);
+      if (json.success) {
+        setSavedSessions(json.history || []);
+      }
     } catch (err) {
       console.error('Cloud synchronization failed:', err);
     }
@@ -48,7 +51,7 @@ export default function Home() {
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      if (file.size > 5 * 1024 * 1024) return alert('File size exceeds the 5MB tier-1 luxury limit.');
+      if (file.size > 5 * 1024 * 1024) return alert('File size exceeds 5MB limit.');
       setImageFile(file);
       const reader = new FileReader();
       reader.onloadend = () => setImagePreview(reader.result as string);
@@ -62,107 +65,7 @@ export default function Home() {
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
-  const handleAISplit = async () => {
-    if (!chatText && !imageFile) return alert('Please provide a premium invoice image or statement text.');
-    if (masterMembers.length === 0) return alert('Please specify the high-net-worth members.');
-    
-    setLoading(true);
-    const formData = new FormData();
-    formData.append('chatText', chatText);
-    formData.append('members', masterMembersText);
-    if (imageFile) formData.append('image', imageFile);
-
-    try {
-      const res = await fetch('/api/gemini', { method: 'POST', body: formData });
-      const json = await res.json();
-      if (json.success && json.data.length > 0) {
-        const newItems = json.data.map((item: any, i: number) => ({
-          id: `item_${Date.now()}_${i}`,
-          item: item.item || 'Premium General Ledger Item',
-          price: Number(item.price) || 0,
-          shared_by: item.shared_by || []
-        }));
-        setBillItems(newItems);
-        await saveToSheetsCloud(newItems);
-      } else {
-        alert(json.error || 'AI interpretation failed. Please refine the luxury statement.');
-      }
-    } catch (err) {
-      alert('Cloud gateway validation error.');
-    }
-    setLoading(false);
-  };
-
-  const saveToSheetsCloud = async (items: ExpenseItem[]) => {
-    try {
-      const newSession = {
-        id: Date.now(),
-        date: new Date().toLocaleString('en-US', { hour12: false, month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }),
-        items: items,
-        membersText: masterMembersText
-      };
-      const formData = new FormData();
-      formData.append('action', 'save_history');
-      formData.append('session', JSON.stringify(newSession));
-      
-      await fetch('/api/gemini', { method: 'POST', body: formData });
-      loadHistoryFromSheets(); 
-    } catch (e) {
-      console.error('Cloud asset synchronizing failure:', e);
-    }
-  };
-
-  const handleItemChange = (itemId: string, field: 'item' | 'price', value: any) => {
-    setBillItems(prev => {
-      const updated = prev.map(item => {
-        if (item.id === itemId) {
-          return { 
-            ...item, 
-            [field]: field === 'price' ? (Number(value) || 0) : value 
-          };
-        }
-        return item;
-      });
-      saveToSheetsCloud(updated);
-      return updated;
-    });
-  };
-
-  const toggleSharedBy = (itemId: string, memberName: string) => {
-    setBillItems(prev => {
-      const updated = prev.map(item => {
-        if (item.id === itemId) {
-          const isSharing = item.shared_by.includes(memberName);
-          const newSharedBy = isSharing ? item.shared_by.filter(m => m !== memberName) : [...item.shared_by, memberName];
-          return { ...item, shared_by: newSharedBy };
-        }
-        return item;
-      });
-      saveToSheetsCloud(updated);
-      return updated;
-    });
-  };
-
-  const clearHistoryCloud = async () => {
-    if (!confirm('Are you sure you want to permanently purge all sovereign database records from the cloud architecture?')) return;
-    setHistoryLoading(true);
-    try {
-      const formData = new FormData();
-      formData.append('action', 'clear_history');
-      await fetch('/api/gemini', { method: 'POST', body: formData });
-      setSavedSessions([]);
-      setBillItems([]);
-    } catch (e) {
-      alert('Purge deployment aborted.');
-    }
-    setHistoryLoading(false);
-  };
-
-  const loadSession = (session: any) => {
-    setMasterMembersText(session.membersText);
-    setBillItems(session.items);
-  };
-
+  // คำนวณสรุปยอด (Memoized เพื่อความลื่นไหลและใช้จัดรูปแบบส่งเข้า Sheet)
   const calculatedBalance = useMemo(() => {
     let membersTotal: { [name: string]: number } = {};
     masterMembers.forEach(m => membersTotal[m] = 0);
@@ -187,6 +90,122 @@ export default function Home() {
     
     return { membersTotal, grossPoolValue, outputText: breakdownText + netOwes };
   }, [billItems, masterMembers]);
+
+  // ✨ ฟังก์ชัน Sync ข้อมูลลง Google Sheets ของมึงตามโครงสร้างที่ route.ts มึงรองรับ
+  const syncToGoogleSheetsCloud = async (currentItems: ExpenseItem[]) => {
+    try {
+      const formData = new FormData();
+      formData.append('action', 'save_history');
+      // ส่งค่า chatText เป็นรายการสรุปไอเทมทั้งหมด เพื่อให้เอาไปหยอดลงช่องรายละเอียดใน Sheet มึง
+      const itemsSummary = currentItems.map(i => `${i.item} (${i.price}B) shared by [${i.shared_by.join(',')}]`).join(' | ');
+      formData.append('chatText', itemsSummary || 'Manual Entry Update');
+      formData.append('members', masterMembersText);
+
+      await fetch('/api/gemini', { method: 'POST', body: formData });
+      // เรียกโหลดประวัติเวอร์ชันล่าสุดมาอัปเดตหน้าจอ
+      const loadFormData = new FormData();
+      loadFormData.append('action', 'load_history');
+      const res = await fetch('/api/gemini', { method: 'POST', body: loadFormData });
+      const json = await res.json();
+      if (json.success) setSavedSessions(json.history || []);
+    } catch (e) {
+      console.error('Failed to sync data to Apps Script:', e);
+    }
+  };
+
+  const handleAISplit = async () => {
+    if (!chatText && !imageFile) return alert('Please provide an invoice image or statement text.');
+    if (masterMembers.length === 0) return alert('Please specify the members.');
+    
+    setLoading(true);
+    const formData = new FormData();
+    formData.append('chatText', chatText);
+    formData.append('members', masterMembersText);
+    if (imageFile) formData.append('image', imageFile);
+
+    try {
+      const res = await fetch('/api/gemini', { method: 'POST', body: formData });
+      const json = await res.json();
+      if (json.success && json.data.length > 0) {
+        const newItems = json.data.map((item: any, i: number) => ({
+          id: `item_${Date.now()}_${i}`,
+          item: item.item || 'Premium Ledger Item',
+          price: Number(item.price) || 0,
+          shared_by: item.shared_by || []
+        }));
+        setBillItems(newItems);
+        await syncToGoogleSheetsCloud(newItems);
+      } else {
+        alert(json.error || 'AI interpretation failed.');
+      }
+    } catch (err) {
+      alert('Cloud gateway validation error.');
+    }
+    setLoading(false);
+  };
+
+  const handleItemChange = (itemId: string, field: 'item' | 'price', value: any) => {
+    const updated = billItems.map(item => {
+      if (item.id === itemId) {
+        return { 
+          ...item, 
+          [field]: field === 'price' ? (Number(value) || 0) : value 
+        };
+      }
+      return item;
+    });
+    setBillItems(updated);
+    syncToGoogleSheetsCloud(updated);
+  };
+
+  const toggleSharedBy = (itemId: string, memberName: string) => {
+    const updated = billItems.map(item => {
+      if (item.id === itemId) {
+        const isSharing = item.shared_by.includes(memberName);
+        const newSharedBy = isSharing ? item.shared_by.filter(m => m !== memberName) : [...item.shared_by, memberName];
+        return { ...item, shared_by: newSharedBy };
+      }
+      return item;
+    });
+    setBillItems(updated);
+    syncToGoogleSheetsCloud(updated);
+  };
+
+  const handleAddItem = () => {
+    const updated = [...billItems, { id: `item_${Date.now()}`, item: 'New Ledger Entry', price: 0, shared_by: [] }];
+    setBillItems(updated);
+    syncToGoogleSheetsCloud(updated);
+  };
+
+  const handleDeleteItem = (itemId: string) => {
+    const updated = billItems.filter(i => i.id !== itemId);
+    setBillItems(updated);
+    syncToGoogleSheetsCloud(updated);
+  };
+
+  const clearHistoryCloud = async () => {
+    if (!confirm('Are you sure you want to permanently purge records from the cloud architecture?')) return;
+    setHistoryLoading(true);
+    try {
+      const formData = new FormData();
+      formData.append('action', 'clear_history');
+      await fetch('/api/gemini', { method: 'POST', body: formData });
+      setSavedSessions([]);
+      setBillItems([]);
+    } catch (e) {
+      alert('Purge deployment aborted.');
+    }
+    setHistoryLoading(false);
+  };
+
+  const loadSession = (session: any) => {
+    setMasterMembersText(session.membersText || masterMembersText);
+    if (session.items) {
+      setBillItems(session.items);
+    } else {
+      setBillItems([{ id: `item_${Date.now()}`, item: session.chatText || 'Historical Item', price: 0, shared_by: [] }]);
+    }
+  };
 
   return (
     <main className="min-h-screen p-6 md:p-12 bg-neutral-950 text-neutral-100 font-sans selection:bg-teal-900 selection:text-teal-100 antialiased">
@@ -240,15 +259,15 @@ export default function Home() {
             <div className="bg-neutral-900/40 border border-dashed border-neutral-800/80 rounded-3xl p-6 shadow-2xl backdrop-blur-md transition-all hover:border-neutral-700/50">
               <div className="flex items-center gap-3 mb-5 text-neutral-400 font-bold tracking-widest text-xs uppercase"><History className="w-4 h-4 text-emerald-400" />Sovereign Ledger History</div>
               {historyLoading ? (
-                <div className="flex items-center justify-center gap-2 py-8 text-xs text-neutral-400 font-mono tracking-wider"><div className="w-2 h-2 rounded-full bg-teal-400 animate-ping"/>Syncing with global enterprise servers...</div>
+                <div className="flex items-center justify-center gap-2 py-8 text-xs text-neutral-400 font-mono tracking-wider"><div className="w-2 h-2 rounded-full bg-teal-400 animate-ping"/>Syncing with cloud servers...</div>
               ) : savedSessions.length === 0 ? (
                 <p className="text-neutral-600 text-xs text-center py-6 italic font-medium">No encrypted ledger streams detected on cloud vault.</p>
               ) : (
                 <div className="space-y-3.5 max-h-[280px] overflow-y-auto pr-1 custom-scrollbar">
-                  {savedSessions.map((s) => (
-                    <div key={s.id} onClick={() => loadSession(s)} className="p-4 bg-neutral-950/80 border border-neutral-800/80 rounded-xl cursor-pointer hover:border-teal-500/50 hover:bg-neutral-900 transition-all duration-200 group shadow-md hover:translate-x-1">
-                      <p className="text-[10px] font-bold text-neutral-500 group-hover:text-teal-400 transition-colors font-mono tracking-wider">{s.date}</p>
-                      <p className="text-xs text-neutral-300 truncate mt-1.5 font-medium">{s.items.map((i:any)=>i.item).join(', ')}</p>
+                  {savedSessions.map((s, idx) => (
+                    <div key={s.id || idx} onClick={() => loadSession(s)} className="p-4 bg-neutral-950/80 border border-neutral-800/80 rounded-xl cursor-pointer hover:border-teal-500/50 hover:bg-neutral-900 transition-all duration-200 group shadow-md hover:translate-x-1">
+                      <p className="text-[10px] font-bold text-neutral-500 group-hover:text-teal-400 transition-colors font-mono tracking-wider">{s.date || 'Past Session'}</p>
+                      <p className="text-xs text-neutral-300 truncate mt-1.5 font-medium">{s.chatText || s.items?.map((i:any)=>i.item).join(', ')}</p>
                     </div>
                   ))}
                   <button onClick={clearHistoryCloud} className="w-full py-2.5 text-[11px] text-red-400/80 hover:text-red-400 flex items-center justify-center gap-2 mt-4 uppercase tracking-widest font-bold border border-red-950/30 bg-red-950/10 hover:bg-red-950/30 rounded-xl transition-all duration-200"><Trash2 className="w-3.5 h-3.5" /> Purge Sovereign Database</button>
@@ -266,14 +285,14 @@ export default function Home() {
                 rows={4} 
                 value={chatText} 
                 onChange={(e) => setChatText(e.target.value)} 
-                placeholder="Paste telemetry logs... e.g., Omakase Executive Suite 24500. Court Live Booking 1800 shared by Pang, Charlotte." 
+                placeholder="Paste telemetry logs... e.g., Omakase Executive Suite 24500." 
               />
               
               <div className="mb-6">
                 <input type="file" accept="image/*" className="hidden" ref={fileInputRef} onChange={handleImageChange} />
                 {!imagePreview ? (
                   <button onClick={() => fileInputRef.current?.click()} className="w-full py-7 border-2 border-dashed border-neutral-800 rounded-xl hover:border-teal-500/40 hover:bg-neutral-900/50 transition-all duration-300 flex flex-col items-center gap-2.5 text-neutral-500 hover:text-teal-400 group">
-                    <ImagePlus className="w-6 h-6 transform group-hover:scale-110 transition-transform" /><span className="text-[10px] font-bold uppercase tracking-widest">Inject Premium Optical Invoice</span>
+                    <ImagePlus className="w-6 h-6 transform group-hover:scale-110 transition-transform" /><span className="text-[10px] font-bold uppercase tracking-widest">Inject Optical Invoice</span>
                   </button>
                 ) : (
                   <div className="relative rounded-xl border border-neutral-800 p-2 bg-neutral-950 shadow-inner">
@@ -292,9 +311,8 @@ export default function Home() {
                 <div className="flex items-center gap-3 text-neutral-400 font-bold tracking-widest text-xs uppercase">
                   <Check className="w-4 h-4 text-teal-400" />📋 Asset Ledger Sheet
                 </div>
-                {/* ✨ ปุ่ม Add Item สุดหรู เพิ่มแถวแบบ Manual */}
                 <button 
-                  onClick={() => setBillItems([...billItems, { id: `item_${Date.now()}`, item: 'New Ledger Entry', price: 0, shared_by: [] }])}
+                  onClick={handleAddItem}
                   className="text-[10px] font-bold text-teal-400 hover:text-teal-300 uppercase tracking-widest border border-teal-900/30 px-3 py-1.5 rounded-lg bg-teal-950/20 hover:bg-teal-950/40 transition-all duration-200"
                 >
                   + Add Item
@@ -343,9 +361,8 @@ export default function Home() {
                           </div>
                         </td>
                         <td className="p-4 align-top text-center">
-                          {/* ✨ ปุ่มถังขยะ ลบเฉพาะแถวนี้ออก */}
                           <button 
-                            onClick={() => setBillItems(billItems.filter(i => i.id !== item.id))}
+                            onClick={() => handleDeleteItem(item.id)}
                             className="text-neutral-700 hover:text-red-400 p-1 rounded transition-colors"
                             title="Delete Item"
                           >
