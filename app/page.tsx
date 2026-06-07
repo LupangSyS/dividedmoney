@@ -42,7 +42,6 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    // กรองและสร้าง array ชื่อคนแบบคลีนๆ
     setMasterMembers(masterMembersText.split(',').map(s => s.trim()).filter(s => s));
   }, [masterMembersText]);
 
@@ -215,7 +214,6 @@ export default function Home() {
 
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
           
-          {/* Section 1: Governance & Archives */}
           <div className="lg:col-span-1 space-y-8">
             <div className="bg-neutral-900/90 border border-neutral-800 rounded-3xl p-6 shadow-2xl backdrop-blur-md transition-all hover:border-neutral-700/80">
               <div className="flex items-center gap-3 mb-5 text-neutral-400 font-bold tracking-widest text-xs uppercase"><Users className="w-4 h-4 text-teal-400" />1. Syndicate Registry</div>
@@ -228,7 +226,6 @@ export default function Home() {
                 placeholder="e.g. Pang, Wave, Ohm"
               />
               
-              {/* ✨ อัปเกรดจุดแรก: Smart Member Chips (แก้ปัญหารายชื่อกากๆ) */}
               {masterMembers.length > 0 && (
                 <div className="flex flex-wrap gap-2 mt-5 pt-5 border-t border-neutral-800/60">
                   {masterMembers.map(m => (
@@ -291,20 +288,32 @@ export default function Home() {
 
           <div className="lg:col-span-2 space-y-8">
             <div className="bg-neutral-900/90 border border-neutral-800 rounded-3xl p-6 shadow-2xl backdrop-blur-md transition-all hover:border-neutral-700/80">
-              <div className="flex items-center gap-3 mb-5 text-neutral-400 font-bold tracking-widest text-xs uppercase"><Check className="w-4 h-4 text-teal-400" />📋 Asset Ledger Sheet</div>
+              <div className="flex items-center justify-between mb-5">
+                <div className="flex items-center gap-3 text-neutral-400 font-bold tracking-widest text-xs uppercase">
+                  <Check className="w-4 h-4 text-teal-400" />📋 Asset Ledger Sheet
+                </div>
+                {/* ✨ ปุ่ม Add Item สุดหรู เพิ่มแถวแบบ Manual */}
+                <button 
+                  onClick={() => setBillItems([...billItems, { id: `item_${Date.now()}`, item: 'New Ledger Entry', price: 0, shared_by: [] }])}
+                  className="text-[10px] font-bold text-teal-400 hover:text-teal-300 uppercase tracking-widest border border-teal-900/30 px-3 py-1.5 rounded-lg bg-teal-950/20 hover:bg-teal-950/40 transition-all duration-200"
+                >
+                  + Add Item
+                </button>
+              </div>
+              
               <div className='overflow-x-auto rounded-xl border border-neutral-800 bg-neutral-950/80 shadow-inner'>
                 <table className="w-full text-left border-collapse text-xs">
                   <thead className="bg-neutral-900/70 text-neutral-400 border-b border-neutral-800/60 font-mono tracking-wider">
                     <tr>
                       <th className="p-4 font-bold uppercase text-[10px] tracking-widest w-1/3">Asset Allocation Item</th>
                       <th className="p-4 font-bold w-32 text-right uppercase text-[10px] tracking-widest border-r border-neutral-900">Valuation (฿)</th>
-                      {/* ✨ อัปเกรดจุดที่สอง: ยุบคอลัมน์ชื่อคน เหลือคอลัมน์เดียว */}
                       <th className="p-4 font-bold text-left text-[10px] tracking-widest uppercase pl-6">Active Stakeholders (Toggle)</th>
+                      <th className="p-4 w-12"></th>
                     </tr>
                   </thead>
                   <tbody className='divide-y divide-neutral-900/80 text-neutral-200 font-medium'>
                     {billItems.length === 0 ? (
-                      <tr><td colSpan={3} className="p-16 text-center text-neutral-600 font-medium font-mono text-xs tracking-wide italic">Awaiting telemetry computation execution context...</td></tr>
+                      <tr><td colSpan={4} className="p-16 text-center text-neutral-600 font-medium font-mono text-xs tracking-wide italic">Awaiting telemetry computation or manual asset execution context...</td></tr>
                     ) : billItems.map(item => (
                       <tr key={item.id} className="hover:bg-neutral-900/40 transition-colors duration-150 group">
                         <td className="p-4 align-top">
@@ -314,7 +323,6 @@ export default function Home() {
                           <input type="number" className="bg-transparent w-full outline-none text-right text-teal-400 font-mono font-bold border-b border-transparent focus:border-teal-900/60 transition-all" value={item.price} onChange={(e) => handleItemChange(item.id, 'price', e.target.value)} />
                         </td>
                         <td className="p-4 pl-6 align-top">
-                           {/* ✨ เอาปุ่มชื่อคนมาใส่ในแถวของรายการแทน ลาก่อนตารางยาวถึงยะลา */}
                           <div className="flex flex-wrap gap-2">
                             {masterMembers.map(m => {
                               const isActive = item.shared_by.includes(m);
@@ -324,7 +332,7 @@ export default function Home() {
                                   onClick={() => toggleSharedBy(item.id, m)}
                                   className={`px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded-lg transition-all duration-200 border shadow-sm
                                     ${isActive 
-                                      ? 'bg-teal-500/10 text-teal-400 border-teal-500/50' 
+                                      ? 'bg-teal-500/10 text-teal-400 border-teal-500/50 shadow-[0_0_10px_rgba(20,184,166,0.1)]' 
                                       : 'bg-neutral-950 text-neutral-500 border-neutral-800 hover:border-neutral-600'
                                     }`}
                                 >
@@ -333,6 +341,16 @@ export default function Home() {
                               );
                             })}
                           </div>
+                        </td>
+                        <td className="p-4 align-top text-center">
+                          {/* ✨ ปุ่มถังขยะ ลบเฉพาะแถวนี้ออก */}
+                          <button 
+                            onClick={() => setBillItems(billItems.filter(i => i.id !== item.id))}
+                            className="text-neutral-700 hover:text-red-400 p-1 rounded transition-colors"
+                            title="Delete Item"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
                         </td>
                       </tr>
                     ))}
