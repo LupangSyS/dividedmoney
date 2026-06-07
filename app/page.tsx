@@ -23,7 +23,6 @@ export default function Home() {
   const [savedSessions, setSavedSessions] = useState<any[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Synchronize history from Google Sheets Cloud Architecture
   const loadHistoryFromSheets = async () => {
     setHistoryLoading(true);
     try {
@@ -43,6 +42,7 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
+    // กรองและสร้าง array ชื่อคนแบบคลีนๆ
     setMasterMembers(masterMembersText.split(',').map(s => s.trim()).filter(s => s));
   }, [masterMembersText]);
 
@@ -164,7 +164,6 @@ export default function Home() {
     setBillItems(session.items);
   };
 
-  // Advanced financial calculations & text compiler
   const calculatedBalance = useMemo(() => {
     let membersTotal: { [name: string]: number } = {};
     masterMembers.forEach(m => membersTotal[m] = 0);
@@ -194,7 +193,6 @@ export default function Home() {
     <main className="min-h-screen p-6 md:p-12 bg-neutral-950 text-neutral-100 font-sans selection:bg-teal-900 selection:text-teal-100 antialiased">
       <div className="max-w-[1700px] mx-auto space-y-12">
         
-        {/* Luxury Dynamic Header */}
         <header className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6 pb-8 border-b border-neutral-900">
           <div className="flex items-center gap-5">
             <div className="p-3.5 bg-gradient-to-br from-teal-500/20 to-emerald-500/5 rounded-3xl border border-teal-500/30 shadow-2xl relative overflow-hidden group">
@@ -215,7 +213,6 @@ export default function Home() {
           </div>
         </header>
 
-        {/* Core Workspace Layout */}
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
           
           {/* Section 1: Governance & Archives */}
@@ -223,7 +220,24 @@ export default function Home() {
             <div className="bg-neutral-900/90 border border-neutral-800 rounded-3xl p-6 shadow-2xl backdrop-blur-md transition-all hover:border-neutral-700/80">
               <div className="flex items-center gap-3 mb-5 text-neutral-400 font-bold tracking-widest text-xs uppercase"><Users className="w-4 h-4 text-teal-400" />1. Syndicate Registry</div>
               <p className="text-xs text-neutral-500 mb-3 leading-relaxed">Input individual stakeholder identities separated by a comma descriptor.</p>
-              <input type="text" className="w-full p-4 border border-neutral-800 bg-neutral-950 rounded-xl text-neutral-100 focus:outline-none focus:ring-1 focus:ring-teal-500/50 focus:border-teal-500 font-mono text-sm tracking-wide transition-all shadow-inner" value={masterMembersText} onChange={(e) => setMasterMembersText(e.target.value)} />
+              <input 
+                type="text" 
+                className="w-full p-4 border border-neutral-800 bg-neutral-950 rounded-xl text-neutral-100 focus:outline-none focus:ring-1 focus:ring-teal-500/50 focus:border-teal-500 font-mono text-sm tracking-wide transition-all shadow-inner" 
+                value={masterMembersText} 
+                onChange={(e) => setMasterMembersText(e.target.value)} 
+                placeholder="e.g. Pang, Wave, Ohm"
+              />
+              
+              {/* ✨ อัปเกรดจุดแรก: Smart Member Chips (แก้ปัญหารายชื่อกากๆ) */}
+              {masterMembers.length > 0 && (
+                <div className="flex flex-wrap gap-2 mt-5 pt-5 border-t border-neutral-800/60">
+                  {masterMembers.map(m => (
+                    <span key={m} className="px-3 py-1.5 bg-neutral-950 border border-neutral-800 text-neutral-300 text-[11px] rounded-lg font-mono shadow-sm flex items-center gap-2 tracking-wider">
+                      <span className="w-1.5 h-1.5 rounded-full bg-teal-500 shadow-[0_0_5px_rgba(20,184,166,0.8)]"></span> {m}
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
 
             <div className="bg-neutral-900/40 border border-dashed border-neutral-800/80 rounded-3xl p-6 shadow-2xl backdrop-blur-md transition-all hover:border-neutral-700/50">
@@ -246,7 +260,6 @@ export default function Home() {
             </div>
           </div>
 
-          {/* Section 2: Financial Telemetry & AI Input */}
           <div className="lg:col-span-1 space-y-8">
             <div className="bg-neutral-900/90 border border-neutral-800 rounded-3xl p-6 shadow-2xl backdrop-blur-md transition-all hover:border-neutral-700/80">
               <div className="flex items-center gap-3 mb-5 text-neutral-400 font-bold tracking-widest text-xs uppercase"><PackagePlus className="w-4 h-4 text-teal-400" />2. Statement Telemetry</div>
@@ -276,7 +289,6 @@ export default function Home() {
             </div>
           </div>
 
-          {/* Section 3: Premium Interactive Ledger Sheet */}
           <div className="lg:col-span-2 space-y-8">
             <div className="bg-neutral-900/90 border border-neutral-800 rounded-3xl p-6 shadow-2xl backdrop-blur-md transition-all hover:border-neutral-700/80">
               <div className="flex items-center gap-3 mb-5 text-neutral-400 font-bold tracking-widest text-xs uppercase"><Check className="w-4 h-4 text-teal-400" />📋 Asset Ledger Sheet</div>
@@ -284,27 +296,44 @@ export default function Home() {
                 <table className="w-full text-left border-collapse text-xs">
                   <thead className="bg-neutral-900/70 text-neutral-400 border-b border-neutral-800/60 font-mono tracking-wider">
                     <tr>
-                      <th className="p-4 font-bold uppercase text-[10px] tracking-widest">Asset Allocation Item</th>
-                      <th className="p-4 font-bold w-32 text-right uppercase text-[10px] tracking-widest">Valuation (฿)</th>
-                      {masterMembers.map(m => <th key={m} className="p-4 text-center font-bold border-l border-neutral-900 text-[10px] tracking-widest uppercase">{m}</th>)}
+                      <th className="p-4 font-bold uppercase text-[10px] tracking-widest w-1/3">Asset Allocation Item</th>
+                      <th className="p-4 font-bold w-32 text-right uppercase text-[10px] tracking-widest border-r border-neutral-900">Valuation (฿)</th>
+                      {/* ✨ อัปเกรดจุดที่สอง: ยุบคอลัมน์ชื่อคน เหลือคอลัมน์เดียว */}
+                      <th className="p-4 font-bold text-left text-[10px] tracking-widest uppercase pl-6">Active Stakeholders (Toggle)</th>
                     </tr>
                   </thead>
                   <tbody className='divide-y divide-neutral-900/80 text-neutral-200 font-medium'>
                     {billItems.length === 0 ? (
-                      <tr><td colSpan={masterMembers.length + 2} className="p-16 text-center text-neutral-600 font-medium font-mono text-xs tracking-wide italic">Awaiting telemetry computation execution context...</td></tr>
+                      <tr><td colSpan={3} className="p-16 text-center text-neutral-600 font-medium font-mono text-xs tracking-wide italic">Awaiting telemetry computation execution context...</td></tr>
                     ) : billItems.map(item => (
                       <tr key={item.id} className="hover:bg-neutral-900/40 transition-colors duration-150 group">
-                        <td className="p-4">
+                        <td className="p-4 align-top">
                           <input type="text" className="bg-transparent w-full outline-none focus:text-teal-400 font-sans border-b border-transparent focus:border-teal-900/60 transition-all font-semibold" value={item.item} onChange={(e) => handleItemChange(item.id, 'item', e.target.value)} />
                         </td>
-                        <td className="p-4">
+                        <td className="p-4 align-top border-r border-neutral-900/60">
                           <input type="number" className="bg-transparent w-full outline-none text-right text-teal-400 font-mono font-bold border-b border-transparent focus:border-teal-900/60 transition-all" value={item.price} onChange={(e) => handleItemChange(item.id, 'price', e.target.value)} />
                         </td>
-                        {masterMembers.map(m => (
-                          <td key={m} className="p-4 text-center border-l border-neutral-900/60">
-                            <input type="checkbox" className="w-5 h-5 cursor-pointer accent-teal-500 rounded bg-neutral-900 border-neutral-800 transition-all hover:scale-110 shadow-inner" checked={item.shared_by.includes(m)} onChange={() => toggleSharedBy(item.id, m)} />
-                          </td>
-                        ))}
+                        <td className="p-4 pl-6 align-top">
+                           {/* ✨ เอาปุ่มชื่อคนมาใส่ในแถวของรายการแทน ลาก่อนตารางยาวถึงยะลา */}
+                          <div className="flex flex-wrap gap-2">
+                            {masterMembers.map(m => {
+                              const isActive = item.shared_by.includes(m);
+                              return (
+                                <button 
+                                  key={m}
+                                  onClick={() => toggleSharedBy(item.id, m)}
+                                  className={`px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded-lg transition-all duration-200 border shadow-sm
+                                    ${isActive 
+                                      ? 'bg-teal-500/10 text-teal-400 border-teal-500/50' 
+                                      : 'bg-neutral-950 text-neutral-500 border-neutral-800 hover:border-neutral-600'
+                                    }`}
+                                >
+                                  {m}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -312,7 +341,6 @@ export default function Home() {
               </div>
             </div>
 
-            {/* Premium Output Digest Container */}
             <div className="bg-neutral-900/90 border border-neutral-800 rounded-3xl p-6 shadow-2xl border-t-2 border-t-teal-500/80 backdrop-blur-md">
               <div className="flex items-center gap-3 mb-5 text-neutral-400 font-bold tracking-widest text-xs uppercase"><ArrowLeftRight className="w-4 h-4 text-teal-400" />📊 Liquidation Digest Terminal</div>
               <div className="relative group">
@@ -324,7 +352,6 @@ export default function Home() {
 
         </div>
 
-        {/* 💎 Sovereign Financial Telemetry Metrics Board (The New Luxury Section) */}
         <div className="bg-gradient-to-br from-neutral-900 to-neutral-900/80 border border-neutral-800 rounded-3xl p-8 shadow-2xl mt-12 relative overflow-hidden backdrop-blur-md">
           <div className="absolute top-0 right-0 p-8 opacity-5 transform translate-x-4 -translate-y-4">
             <Wallet className="w-48 h-48 text-teal-400" />
