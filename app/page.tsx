@@ -1,7 +1,8 @@
 // Path: app/page.tsx
 'use client';
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { Check, PackagePlus, Users, Wand2, ArrowLeftRight, ImagePlus, X, History, Trash2, Wallet } from 'lucide-react';
+import Link from 'next/link';
+import { Check, PackagePlus, Users, Wand2, ArrowLeftRight, ImagePlus, X, History, Trash2, Wallet, Download, Settings2 } from 'lucide-react';
 
 interface ExpenseItem {
   id: string;
@@ -31,7 +32,12 @@ export default function Home() {
       const res = await fetch('/api/gemini', { method: 'POST', body: formData });
       const json = await res.json();
       if (json.success) {
-        setSavedSessions(json.history || []);
+        const history = json.history || [];
+        setSavedSessions(history);
+        // Remember the group from the last saved split, so members don't need retyping.
+        if (history[0]?.membersText) {
+          setMasterMembersText(history[0].membersText);
+        }
       }
     } catch (err) {
       console.error('Failed to load history:', err);
@@ -185,19 +191,37 @@ export default function Home() {
     setBillItems(prev => prev.filter(i => i.id !== itemId));
   };
 
-  const clearHistoryCloud = async () => {
-    if (!confirm("This will permanently delete all saved history. This can't be undone. Continue?")) return;
-    setHistoryLoading(true);
-    try {
-      const formData = new FormData();
-      formData.append('action', 'clear_history');
-      await fetch('/api/gemini', { method: 'POST', body: formData });
-      setSavedSessions([]);
-      setBillItems([]);
-    } catch (e) {
-      alert('Could not clear history. Please try again.');
+  // Renders "Name <space> Price" lines to a PNG, one per person, for Khunthong's photo import.
+  const exportToKhunthong = () => {
+    const rows = calculatedBalance.personBreakdown;
+    if (rows.length === 0) {
+      return alert('Tick at least one person against an item first.');
     }
-    setHistoryLoading(false);
+
+    const lineHeight = 48;
+    const padding = 32;
+    const canvas = document.createElement('canvas');
+    canvas.width = 640;
+    canvas.height = padding * 2 + lineHeight * rows.length;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = '#000000';
+    ctx.font = 'bold 30px monospace';
+    ctx.textBaseline = 'middle';
+
+    rows.forEach((p, i) => {
+      const y = padding + lineHeight * i + lineHeight / 2;
+      ctx.fillText(`${p.name} ${Math.ceil(p.total)}`, padding, y);
+    });
+
+    const link = document.createElement('a');
+    link.download = 'khunthong-split.png';
+    link.href = canvas.toDataURL('image/png');
+    link.click();
   };
 
   const loadSession = (session: any) => {
@@ -251,7 +275,12 @@ export default function Home() {
             </div>
 
             <div className="bg-white border border-neutral-200 rounded-2xl p-5 shadow-sm">
-              <div className="flex items-center gap-2 mb-3 text-neutral-700 font-semibold text-sm"><History className="w-4 h-4 text-emerald-600" />History</div>
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2 text-neutral-700 font-semibold text-sm"><History className="w-4 h-4 text-emerald-600" />History</div>
+                <Link href="/history" className="flex items-center gap-1 text-xs text-neutral-400 hover:text-neutral-600 transition-colors">
+                  <Settings2 className="w-3.5 h-3.5" /> Manage
+                </Link>
+              </div>
               {historyLoading ? (
                 <div className="flex items-center justify-center gap-2 py-8 text-xs text-neutral-400"><div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"/>Loading history...</div>
               ) : savedSessions.length === 0 ? (
@@ -264,7 +293,6 @@ export default function Home() {
                       <p className="text-xs text-neutral-700 truncate mt-1">{s.chatText || s.items?.map((i:any)=>i.item).join(', ')}</p>
                     </div>
                   ))}
-                  <button onClick={clearHistoryCloud} className="w-full py-2 text-xs text-red-600 hover:text-red-700 flex items-center justify-center gap-1.5 mt-2 font-medium border border-red-200 bg-red-50 hover:bg-red-100 rounded-lg transition-colors"><Trash2 className="w-3.5 h-3.5" /> Clear history</button>
                 </div>
               )}
             </div>
@@ -374,8 +402,9 @@ export default function Home() {
               <div className="flex items-center gap-2 mb-4 text-neutral-700 font-semibold text-sm"><ArrowLeftRight className="w-4 h-4 text-emerald-600" />Split summary</div>
               <div className="relative">
                 <textarea className="w-full p-4 border border-neutral-200 bg-neutral-50 rounded-lg text-neutral-700 text-xs font-mono leading-relaxed resize-none" rows={10} value={calculatedBalance.outputText} readOnly />
-                <div className="absolute bottom-3 right-3 flex gap-2">
+                <div className="absolute bottom-3 right-3 flex flex-wrap justify-end gap-2 max-w-full">
                   <button onClick={() => { navigator.clipboard.writeText(calculatedBalance.outputText); alert('Copied to clipboard.'); }} disabled={!calculatedBalance.outputText} className='bg-white hover:bg-neutral-100 border border-neutral-200 text-neutral-600 hover:text-neutral-800 py-2 px-3.5 rounded-lg text-xs font-medium shadow-sm transition-colors active:scale-95 disabled:opacity-40'>Copy summary</button>
+                  <button onClick={exportToKhunthong} disabled={calculatedBalance.personBreakdown.length === 0} title="Download a Name / Price image to import into Khunthong" className='bg-white hover:bg-neutral-100 border border-neutral-200 text-neutral-600 hover:text-neutral-800 py-2 px-3.5 rounded-lg text-xs font-medium shadow-sm transition-colors active:scale-95 disabled:opacity-40 flex items-center gap-1.5'><Download className="w-3.5 h-3.5" /> Export to Khunthong</button>
                   <button onClick={importSplitToLedger} disabled={calculatedBalance.personBreakdown.length === 0} className='bg-emerald-600 hover:bg-emerald-700 text-white py-2 px-3.5 rounded-lg text-xs font-medium shadow-sm transition-colors active:scale-95 disabled:opacity-40 disabled:bg-neutral-200 disabled:text-neutral-400'>Import to Ledger</button>
                 </div>
               </div>
