@@ -1,7 +1,7 @@
 // Path: app/page.tsx
 'use client';
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { Check, PackagePlus, Users, Wand2, ArrowLeftRight, ImagePlus, X, History, Trash2, ShieldCheck, Activity, Wallet } from 'lucide-react';
+import { Check, PackagePlus, Users, Wand2, ArrowLeftRight, ImagePlus, X, History, Trash2, Wallet } from 'lucide-react';
 
 interface ExpenseItem {
   id: string;
@@ -17,13 +17,12 @@ export default function Home() {
   const [billItems, setBillItems] = useState<ExpenseItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(false);
-  
+
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [savedSessions, setSavedSessions] = useState<any[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // โหลดประวัติจาก Google Sheets ผ่าน API หลังบ้านมึง
   const loadHistoryFromSheets = async () => {
     setHistoryLoading(true);
     try {
@@ -35,7 +34,7 @@ export default function Home() {
         setSavedSessions(json.history || []);
       }
     } catch (err) {
-      console.error('Cloud synchronization failed:', err);
+      console.error('Failed to load history:', err);
     }
     setHistoryLoading(false);
   };
@@ -65,7 +64,7 @@ export default function Home() {
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
-  // คำนวณสรุปยอดต่อคน: Name + items + price รวม (Memoized)
+  // Per-person breakdown: name -> items -> summed price (Memoized)
   const calculatedBalance = useMemo(() => {
     let membersTotal: { [name: string]: number } = {};
     masterMembers.forEach(m => membersTotal[m] = 0);
@@ -89,7 +88,7 @@ export default function Home() {
       }))
       .filter(p => p.items.length > 0);
 
-    let outputText = "👑 AURA SPLIT - SOVEREIGN ASSET DISBURSAL:\n=========================================\n";
+    let outputText = "🧾 Split Summary\n=================\n\n";
     personBreakdown.forEach(p => {
       outputText += `👤 ${p.name}\n   ${p.items.join(', ')}\n   -----------------------------------------\n   Total: ฿${Math.ceil(p.total).toLocaleString()}\n\n`;
     });
@@ -97,10 +96,9 @@ export default function Home() {
     return { membersTotal, grossPoolValue, personBreakdown, outputText: outputText.trim() };
   }, [billItems, masterMembers]);
 
-  // นำผลลัพธ์ที่ติ๊กชื่อไว้ (Name + items + price รวม) ไป import เก็บลง Google Sheets
   const importSplitToLedger = async () => {
     if (calculatedBalance.personBreakdown.length === 0) {
-      return alert('Tick at least one member against an item before importing.');
+      return alert('Tick at least one person against an item before saving.');
     }
     try {
       const formData = new FormData();
@@ -113,20 +111,20 @@ export default function Home() {
       const res = await fetch('/api/gemini', { method: 'POST', body: formData });
       const json = await res.json();
       if (!json.success) {
-        return alert(json.error || 'Failed to import to ledger.');
+        return alert(json.error || 'Could not save this split. Please try again.');
       }
       await loadHistoryFromSheets();
-      alert('Split imported to the ledger.');
+      alert('Saved to your history.');
     } catch (e) {
-      console.error('Failed to import split to ledger:', e);
-      alert('Failed to import to ledger.');
+      console.error('Failed to save split:', e);
+      alert('Could not save this split. Please try again.');
     }
   };
 
   const handleAISplit = async () => {
-    if (!chatText && !imageFile) return alert('Please provide an invoice image or statement text.');
-    if (masterMembers.length === 0) return alert('Please specify the members.');
-    
+    if (!chatText && !imageFile) return alert('Please add a receipt photo or paste some text first.');
+    if (masterMembers.length === 0) return alert('Please add at least one member first.');
+
     setLoading(true);
     const formData = new FormData();
     formData.append('action', 'extract_items');
@@ -140,16 +138,16 @@ export default function Home() {
       if (json.success && json.data.length > 0) {
         const newItems = json.data.map((item: any, i: number) => ({
           id: `item_${Date.now()}_${i}`,
-          item: item.item || 'Premium Ledger Item',
+          item: item.item || 'New item',
           price: Number(item.price) || 0,
           shared_by: item.shared_by || []
         }));
         setBillItems(prev => [...prev, ...newItems]);
       } else {
-        alert(json.error || 'AI interpretation failed.');
+        alert(json.error || 'Could not read any items from that.');
       }
     } catch (err) {
-      alert('Cloud gateway validation error.');
+      alert('Something went wrong talking to the AI. Please try again.');
     }
     setLoading(false);
   };
@@ -180,7 +178,7 @@ export default function Home() {
   };
 
   const handleAddItem = () => {
-    setBillItems(prev => [...prev, { id: `item_${Date.now()}`, item: 'New Ledger Entry', price: 0, shared_by: [] }]);
+    setBillItems(prev => [...prev, { id: `item_${Date.now()}`, item: 'New item', price: 0, shared_by: [] }]);
   };
 
   const handleDeleteItem = (itemId: string) => {
@@ -188,7 +186,7 @@ export default function Home() {
   };
 
   const clearHistoryCloud = async () => {
-    if (!confirm('Are you sure you want to permanently purge records from the cloud architecture?')) return;
+    if (!confirm("This will permanently delete all saved history. This can't be undone. Continue?")) return;
     setHistoryLoading(true);
     try {
       const formData = new FormData();
@@ -197,7 +195,7 @@ export default function Home() {
       setSavedSessions([]);
       setBillItems([]);
     } catch (e) {
-      alert('Purge deployment aborted.');
+      alert('Could not clear history. Please try again.');
     }
     setHistoryLoading(false);
   };
@@ -207,155 +205,147 @@ export default function Home() {
     if (session.items) {
       setBillItems(session.items);
     } else {
-      setBillItems([{ id: `item_${Date.now()}`, item: session.chatText || 'Historical Item', price: 0, shared_by: [] }]);
+      setBillItems([{ id: `item_${Date.now()}`, item: session.chatText || 'Item', price: 0, shared_by: [] }]);
     }
   };
 
   return (
-    <main className="min-h-screen p-6 md:p-12 bg-neutral-950 text-neutral-100 font-sans selection:bg-teal-900 selection:text-teal-100 antialiased">
-      <div className="max-w-[1700px] mx-auto space-y-12">
-        
-        <header className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6 pb-8 border-b border-neutral-900">
-          <div className="flex items-center gap-5">
-            <div className="p-3.5 bg-gradient-to-br from-teal-500/20 to-emerald-500/5 rounded-3xl border border-teal-500/30 shadow-2xl relative overflow-hidden group">
-              <div className="absolute inset-0 bg-gradient-to-r from-teal-400/10 to-transparent animate-pulse" />
-              <Wand2 className="w-10 h-10 text-teal-400 drop-shadow-[0_0_15px_rgba(20,184,166,0.5)]" />
+    <main className="min-h-screen p-6 md:p-10 bg-neutral-50 text-neutral-900 font-sans antialiased">
+      <div className="max-w-[1400px] mx-auto space-y-8">
+
+        <header className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 pb-6 border-b border-neutral-200">
+          <div className="flex items-center gap-4">
+            <div className="p-3 bg-emerald-600 rounded-2xl shadow-sm">
+              <Wand2 className="w-7 h-7 text-white" />
             </div>
             <div>
-              <div className="flex items-center gap-3">
-                <h1 className="text-4xl font-black tracking-tight text-neutral-50 bg-clip-text bg-gradient-to-r from-neutral-50 via-neutral-200 to-neutral-400">
-                  AURA <span className="text-teal-400 font-light tracking-widest">SPLIT</span>
-                </h1>
-                <span className="px-3 py-1 text-[10px] uppercase font-bold tracking-widest bg-teal-950/60 border border-teal-800/40 text-teal-400 rounded-full flex items-center gap-1.5 shadow-inner">
-                  <ShieldCheck className="w-3 h-3" /> Sovereign Vault Active
-                </span>
-              </div>
-              <p className="text-neutral-500 text-xs mt-1.5 uppercase tracking-[0.25em] font-semibold">Institutional Expense Harmonizer architecture</p>
+              <h1 className="text-2xl font-bold tracking-tight text-neutral-900">AURA Split</h1>
+              <p className="text-neutral-500 text-sm mt-0.5">Split bills with your group, powered by AI receipt scanning.</p>
             </div>
           </div>
         </header>
 
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
-          
-          <div className="lg:col-span-1 space-y-8">
-            <div className="bg-neutral-900/90 border border-neutral-800 rounded-3xl p-6 shadow-2xl backdrop-blur-md transition-all hover:border-neutral-700/80">
-              <div className="flex items-center gap-3 mb-5 text-neutral-400 font-bold tracking-widest text-xs uppercase"><Users className="w-4 h-4 text-teal-400" />1. Syndicate Registry</div>
-              <p className="text-xs text-neutral-500 mb-3 leading-relaxed">Input individual stakeholder identities separated by a comma descriptor.</p>
-              <input 
-                type="text" 
-                className="w-full p-4 border border-neutral-800 bg-neutral-950 rounded-xl text-neutral-100 focus:outline-none focus:ring-1 focus:ring-teal-500/50 focus:border-teal-500 font-mono text-sm tracking-wide transition-all shadow-inner" 
-                value={masterMembersText} 
-                onChange={(e) => setMasterMembersText(e.target.value)} 
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+
+          <div className="lg:col-span-1 space-y-6">
+            <div className="bg-white border border-neutral-200 rounded-2xl p-5 shadow-sm">
+              <div className="flex items-center gap-2 mb-3 text-neutral-700 font-semibold text-sm"><Users className="w-4 h-4 text-emerald-600" />Members</div>
+              <p className="text-xs text-neutral-500 mb-3 leading-relaxed">Who&apos;s splitting this bill? Separate names with commas.</p>
+              <input
+                type="text"
+                className="w-full p-3 border border-neutral-300 bg-white rounded-lg text-neutral-900 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500 text-sm transition-all"
+                value={masterMembersText}
+                onChange={(e) => setMasterMembersText(e.target.value)}
                 placeholder="e.g. Pang, Wave, Ohm"
               />
-              
+
               {masterMembers.length > 0 && (
-                <div className="flex flex-wrap gap-2 mt-5 pt-5 border-t border-neutral-800/60">
+                <div className="flex flex-wrap gap-2 mt-4 pt-4 border-t border-neutral-100">
                   {masterMembers.map(m => (
-                    <span key={m} className="px-3 py-1.5 bg-neutral-950 border border-neutral-800 text-neutral-300 text-[11px] rounded-lg font-mono shadow-sm flex items-center gap-2 tracking-wider">
-                      <span className="w-1.5 h-1.5 rounded-full bg-teal-500 shadow-[0_0_5px_rgba(20,184,166,0.8)]"></span> {m}
+                    <span key={m} className="px-2.5 py-1 bg-neutral-100 border border-neutral-200 text-neutral-700 text-xs rounded-full font-medium">
+                      {m}
                     </span>
                   ))}
                 </div>
               )}
             </div>
 
-            <div className="bg-neutral-900/40 border border-dashed border-neutral-800/80 rounded-3xl p-6 shadow-2xl backdrop-blur-md transition-all hover:border-neutral-700/50">
-              <div className="flex items-center gap-3 mb-5 text-neutral-400 font-bold tracking-widest text-xs uppercase"><History className="w-4 h-4 text-emerald-400" />Sovereign Ledger History</div>
+            <div className="bg-white border border-neutral-200 rounded-2xl p-5 shadow-sm">
+              <div className="flex items-center gap-2 mb-3 text-neutral-700 font-semibold text-sm"><History className="w-4 h-4 text-emerald-600" />History</div>
               {historyLoading ? (
-                <div className="flex items-center justify-center gap-2 py-8 text-xs text-neutral-400 font-mono tracking-wider"><div className="w-2 h-2 rounded-full bg-teal-400 animate-ping"/>Syncing with cloud servers...</div>
+                <div className="flex items-center justify-center gap-2 py-8 text-xs text-neutral-400"><div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"/>Loading history...</div>
               ) : savedSessions.length === 0 ? (
-                <p className="text-neutral-600 text-xs text-center py-6 italic font-medium">No encrypted ledger streams detected on cloud vault.</p>
+                <p className="text-neutral-400 text-xs text-center py-6">No saved splits yet.</p>
               ) : (
-                <div className="space-y-3.5 max-h-[280px] overflow-y-auto pr-1 custom-scrollbar">
+                <div className="space-y-2 max-h-[280px] overflow-y-auto pr-1">
                   {savedSessions.map((s, idx) => (
-                    <div key={s.id || idx} onClick={() => loadSession(s)} className="p-4 bg-neutral-950/80 border border-neutral-800/80 rounded-xl cursor-pointer hover:border-teal-500/50 hover:bg-neutral-900 transition-all duration-200 group shadow-md hover:translate-x-1">
-                      <p className="text-[10px] font-bold text-neutral-500 group-hover:text-teal-400 transition-colors font-mono tracking-wider">{s.date || 'Past Session'}</p>
-                      <p className="text-xs text-neutral-300 truncate mt-1.5 font-medium">{s.chatText || s.items?.map((i:any)=>i.item).join(', ')}</p>
+                    <div key={s.id || idx} onClick={() => loadSession(s)} className="p-3 bg-neutral-50 border border-neutral-200 rounded-lg cursor-pointer hover:border-emerald-400 hover:bg-emerald-50/40 transition-colors">
+                      <p className="text-[11px] font-medium text-neutral-400">{s.date || 'Past session'}</p>
+                      <p className="text-xs text-neutral-700 truncate mt-1">{s.chatText || s.items?.map((i:any)=>i.item).join(', ')}</p>
                     </div>
                   ))}
-                  <button onClick={clearHistoryCloud} className="w-full py-2.5 text-[11px] text-red-400/80 hover:text-red-400 flex items-center justify-center gap-2 mt-4 uppercase tracking-widest font-bold border border-red-950/30 bg-red-950/10 hover:bg-red-950/30 rounded-xl transition-all duration-200"><Trash2 className="w-3.5 h-3.5" /> Purge Sovereign Database</button>
+                  <button onClick={clearHistoryCloud} className="w-full py-2 text-xs text-red-600 hover:text-red-700 flex items-center justify-center gap-1.5 mt-2 font-medium border border-red-200 bg-red-50 hover:bg-red-100 rounded-lg transition-colors"><Trash2 className="w-3.5 h-3.5" /> Clear history</button>
                 </div>
               )}
             </div>
           </div>
 
-          <div className="lg:col-span-1 space-y-8">
-            <div className="bg-neutral-900/90 border border-neutral-800 rounded-3xl p-6 shadow-2xl backdrop-blur-md transition-all hover:border-neutral-700/80">
-              <div className="flex items-center gap-3 mb-5 text-neutral-400 font-bold tracking-widest text-xs uppercase"><PackagePlus className="w-4 h-4 text-teal-400" />2. Statement Telemetry</div>
-              <p className="text-xs text-neutral-500 mb-3 leading-relaxed">Drop encrypted text streams or log dumps into the validation box below.</p>
-              <textarea 
-                className="w-full p-4 border border-neutral-800 bg-neutral-950 rounded-xl text-neutral-100 focus:outline-none focus:ring-1 focus:ring-teal-500/50 focus:border-teal-500 mb-4 text-xs font-mono leading-relaxed shadow-inner resize-none" 
-                rows={4} 
-                value={chatText} 
-                onChange={(e) => setChatText(e.target.value)} 
-                placeholder="Paste telemetry logs... e.g., Omakase Executive Suite 24500." 
+          <div className="lg:col-span-1 space-y-6">
+            <div className="bg-white border border-neutral-200 rounded-2xl p-5 shadow-sm">
+              <div className="flex items-center gap-2 mb-3 text-neutral-700 font-semibold text-sm"><PackagePlus className="w-4 h-4 text-emerald-600" />Add items</div>
+              <p className="text-xs text-neutral-500 mb-3 leading-relaxed">Paste receipt text, or upload a photo below.</p>
+              <textarea
+                className="w-full p-3 border border-neutral-300 bg-white rounded-lg text-neutral-900 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500 mb-4 text-sm leading-relaxed resize-none transition-all"
+                rows={4}
+                value={chatText}
+                onChange={(e) => setChatText(e.target.value)}
+                placeholder='e.g. "Pad Thai 120, Iced Tea 35"'
               />
-              
-              <div className="mb-6">
+
+              <div className="mb-5">
                 <input type="file" accept="image/*" className="hidden" ref={fileInputRef} onChange={handleImageChange} />
                 {!imagePreview ? (
-                  <button onClick={() => fileInputRef.current?.click()} className="w-full py-7 border-2 border-dashed border-neutral-800 rounded-xl hover:border-teal-500/40 hover:bg-neutral-900/50 transition-all duration-300 flex flex-col items-center gap-2.5 text-neutral-500 hover:text-teal-400 group">
-                    <ImagePlus className="w-6 h-6 transform group-hover:scale-110 transition-transform" /><span className="text-[10px] font-bold uppercase tracking-widest">Inject Optical Invoice</span>
+                  <button onClick={() => fileInputRef.current?.click()} className="w-full py-6 border-2 border-dashed border-neutral-300 rounded-lg hover:border-emerald-400 hover:bg-emerald-50/40 transition-colors flex flex-col items-center gap-2 text-neutral-500 hover:text-emerald-600">
+                    <ImagePlus className="w-6 h-6" /><span className="text-xs font-medium">Upload receipt photo</span>
                   </button>
                 ) : (
-                  <div className="relative rounded-xl border border-neutral-800 p-2 bg-neutral-950 shadow-inner">
-                    <img src={imagePreview} className="w-full h-28 object-cover rounded-lg filter brightness-90" alt="preview" />
-                    <button onClick={removeImage} className="absolute top-4 right-4 bg-red-500/90 hover:bg-red-500 text-white p-1.5 rounded-full shadow-2xl transition-all hover:scale-110"><X className="w-3.5 h-3.5" /></button>
+                  <div className="relative rounded-lg border border-neutral-200 p-2 bg-neutral-50">
+                    <img src={imagePreview} className="w-full h-28 object-cover rounded-md" alt="preview" />
+                    <button onClick={removeImage} className="absolute top-4 right-4 bg-neutral-900/80 hover:bg-neutral-900 text-white p-1.5 rounded-full shadow-sm transition-colors"><X className="w-3.5 h-3.5" /></button>
                   </div>
                 )}
               </div>
-              <button onClick={handleAISplit} disabled={loading} className="w-full flex items-center justify-center gap-2.5 px-6 py-4 rounded-xl bg-gradient-to-r from-teal-500 to-emerald-500 text-neutral-950 font-extrabold text-xs uppercase tracking-widest hover:brightness-110 disabled:from-neutral-800 disabled:to-neutral-800 disabled:text-neutral-600 transition-all duration-300 shadow-lg shadow-teal-500/10 active:scale-[0.98]">{loading ? 'Analyzing Architecture Structure...' : 'Execute AI Synchronization'}</button>
+              <button onClick={handleAISplit} disabled={loading} className="w-full flex items-center justify-center gap-2 px-6 py-3 rounded-lg bg-emerald-600 text-white font-semibold text-sm hover:bg-emerald-700 disabled:bg-neutral-200 disabled:text-neutral-400 transition-colors active:scale-[0.98]">{loading ? 'Reading your receipt...' : 'Extract items with AI'}</button>
             </div>
           </div>
 
-          <div className="lg:col-span-2 space-y-8">
-            <div className="bg-neutral-900/90 border border-neutral-800 rounded-3xl p-6 shadow-2xl backdrop-blur-md transition-all hover:border-neutral-700/80">
-              <div className="flex items-center justify-between mb-5">
-                <div className="flex items-center gap-3 text-neutral-400 font-bold tracking-widest text-xs uppercase">
-                  <Check className="w-4 h-4 text-teal-400" />📋 Asset Ledger Sheet
+          <div className="lg:col-span-2 space-y-6">
+            <div className="bg-white border border-neutral-200 rounded-2xl p-5 shadow-sm">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2 text-neutral-700 font-semibold text-sm">
+                  <Check className="w-4 h-4 text-emerald-600" />Items
                 </div>
-                <button 
+                <button
                   onClick={handleAddItem}
-                  className="text-[10px] font-bold text-teal-400 hover:text-teal-300 uppercase tracking-widest border border-teal-900/30 px-3 py-1.5 rounded-lg bg-teal-950/20 hover:bg-teal-950/40 transition-all duration-200"
+                  className="text-xs font-medium text-emerald-700 hover:text-emerald-800 border border-emerald-200 px-3 py-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 transition-colors"
                 >
-                  + Add Item
+                  + Add item
                 </button>
               </div>
-              
-              <div className='overflow-x-auto rounded-xl border border-neutral-800 bg-neutral-950/80 shadow-inner'>
-                <table className="w-full text-left border-collapse text-xs">
-                  <thead className="bg-neutral-900/70 text-neutral-400 border-b border-neutral-800/60 font-mono tracking-wider">
+
+              <div className='overflow-x-auto rounded-lg border border-neutral-200'>
+                <table className="w-full text-left border-collapse text-sm">
+                  <thead className="bg-neutral-50 text-neutral-500 border-b border-neutral-200">
                     <tr>
-                      <th className="p-4 font-bold uppercase text-[10px] tracking-widest w-1/3">Asset Allocation Item</th>
-                      <th className="p-4 font-bold w-32 text-right uppercase text-[10px] tracking-widest border-r border-neutral-900">Valuation (฿)</th>
-                      <th className="p-4 font-bold text-left text-[10px] tracking-widest uppercase pl-6">Active Stakeholders (Toggle)</th>
-                      <th className="p-4 w-12"></th>
+                      <th className="p-3 font-medium text-xs w-1/3">Item</th>
+                      <th className="p-3 font-medium w-28 text-right text-xs border-r border-neutral-200">Price (฿)</th>
+                      <th className="p-3 font-medium text-left text-xs pl-5">Shared by</th>
+                      <th className="p-3 w-10"></th>
                     </tr>
                   </thead>
-                  <tbody className='divide-y divide-neutral-900/80 text-neutral-200 font-medium'>
+                  <tbody className='divide-y divide-neutral-100 text-neutral-800'>
                     {billItems.length === 0 ? (
-                      <tr><td colSpan={4} className="p-16 text-center text-neutral-600 font-medium font-mono text-xs tracking-wide italic">Awaiting telemetry computation or manual asset execution context...</td></tr>
+                      <tr><td colSpan={4} className="p-12 text-center text-neutral-400 text-sm">No items yet — extract from a receipt or add one manually.</td></tr>
                     ) : billItems.map(item => (
-                      <tr key={item.id} className="hover:bg-neutral-900/40 transition-colors duration-150 group">
-                        <td className="p-4 align-top">
-                          <input type="text" className="bg-transparent w-full outline-none focus:text-teal-400 font-sans border-b border-transparent focus:border-teal-900/60 transition-all font-semibold" value={item.item} onChange={(e) => handleItemChange(item.id, 'item', e.target.value)} />
+                      <tr key={item.id} className="hover:bg-neutral-50 transition-colors group">
+                        <td className="p-3 align-top">
+                          <input type="text" className="bg-transparent w-full outline-none border-b border-transparent focus:border-emerald-400 transition-colors font-medium" value={item.item} onChange={(e) => handleItemChange(item.id, 'item', e.target.value)} />
                         </td>
-                        <td className="p-4 align-top border-r border-neutral-900/60">
-                          <input type="number" className="bg-transparent w-full outline-none text-right text-teal-400 font-mono font-bold border-b border-transparent focus:border-teal-900/60 transition-all" value={item.price} onChange={(e) => handleItemChange(item.id, 'price', e.target.value)} />
+                        <td className="p-3 align-top border-r border-neutral-100">
+                          <input type="number" className="bg-transparent w-full outline-none text-right font-medium border-b border-transparent focus:border-emerald-400 transition-colors" value={item.price} onChange={(e) => handleItemChange(item.id, 'price', e.target.value)} />
                         </td>
-                        <td className="p-4 pl-6 align-top">
-                          <div className="flex flex-wrap gap-2">
+                        <td className="p-3 pl-5 align-top">
+                          <div className="flex flex-wrap gap-1.5">
                             {masterMembers.map(m => {
                               const isActive = item.shared_by.includes(m);
                               return (
-                                <button 
+                                <button
                                   key={m}
                                   onClick={() => toggleSharedBy(item.id, m)}
-                                  className={`px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded-lg transition-all duration-200 border shadow-sm
-                                    ${isActive 
-                                      ? 'bg-teal-500/10 text-teal-400 border-teal-500/50 shadow-[0_0_10px_rgba(20,184,166,0.1)]' 
-                                      : 'bg-neutral-950 text-neutral-500 border-neutral-800 hover:border-neutral-600'
+                                  className={`px-2.5 py-1 text-xs font-medium rounded-full transition-colors border
+                                    ${isActive
+                                      ? 'bg-emerald-50 text-emerald-700 border-emerald-300'
+                                      : 'bg-white text-neutral-400 border-neutral-200 hover:border-neutral-300'
                                     }`}
                                 >
                                   {m}
@@ -364,11 +354,11 @@ export default function Home() {
                             })}
                           </div>
                         </td>
-                        <td className="p-4 align-top text-center">
-                          <button 
+                        <td className="p-3 align-top text-center">
+                          <button
                             onClick={() => handleDeleteItem(item.id)}
-                            className="text-neutral-700 hover:text-red-400 p-1 rounded transition-colors"
-                            title="Delete Item"
+                            className="text-neutral-300 hover:text-red-500 p-1 rounded transition-colors"
+                            title="Delete item"
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
@@ -380,13 +370,13 @@ export default function Home() {
               </div>
             </div>
 
-            <div className="bg-neutral-900/90 border border-neutral-800 rounded-3xl p-6 shadow-2xl border-t-2 border-t-teal-500/80 backdrop-blur-md">
-              <div className="flex items-center gap-3 mb-5 text-neutral-400 font-bold tracking-widest text-xs uppercase"><ArrowLeftRight className="w-4 h-4 text-teal-400" />📊 Liquidation Digest Terminal</div>
-              <div className="relative group">
-                <textarea className="w-full p-5 border border-neutral-800 bg-neutral-950 rounded-2xl text-neutral-300 text-xs font-mono leading-relaxed resize-none shadow-inner" rows={10} value={calculatedBalance.outputText} readOnly />
-                <div className="absolute bottom-4 right-4 flex gap-2">
-                  <button onClick={() => { navigator.clipboard.writeText(calculatedBalance.outputText); alert('Statement package successfully synchronized to clipboard.'); }} disabled={!calculatedBalance.outputText} className='bg-neutral-900/90 hover:bg-neutral-800 border border-neutral-800 text-teal-400 hover:text-teal-300 py-2.5 px-4 rounded-xl text-[10px] font-bold uppercase tracking-widest shadow-2xl transition-all duration-200 active:scale-95 disabled:opacity-40'>Copy Digest Output</button>
-                  <button onClick={importSplitToLedger} disabled={calculatedBalance.personBreakdown.length === 0} className='bg-teal-500 hover:brightness-110 text-neutral-950 py-2.5 px-4 rounded-xl text-[10px] font-bold uppercase tracking-widest shadow-2xl transition-all duration-200 active:scale-95 disabled:opacity-40 disabled:bg-neutral-800 disabled:text-neutral-600'>Import to Ledger</button>
+            <div className="bg-white border border-neutral-200 rounded-2xl p-5 shadow-sm">
+              <div className="flex items-center gap-2 mb-4 text-neutral-700 font-semibold text-sm"><ArrowLeftRight className="w-4 h-4 text-emerald-600" />Split summary</div>
+              <div className="relative">
+                <textarea className="w-full p-4 border border-neutral-200 bg-neutral-50 rounded-lg text-neutral-700 text-xs font-mono leading-relaxed resize-none" rows={10} value={calculatedBalance.outputText} readOnly />
+                <div className="absolute bottom-3 right-3 flex gap-2">
+                  <button onClick={() => { navigator.clipboard.writeText(calculatedBalance.outputText); alert('Copied to clipboard.'); }} disabled={!calculatedBalance.outputText} className='bg-white hover:bg-neutral-100 border border-neutral-200 text-neutral-600 hover:text-neutral-800 py-2 px-3.5 rounded-lg text-xs font-medium shadow-sm transition-colors active:scale-95 disabled:opacity-40'>Copy summary</button>
+                  <button onClick={importSplitToLedger} disabled={calculatedBalance.personBreakdown.length === 0} className='bg-emerald-600 hover:bg-emerald-700 text-white py-2 px-3.5 rounded-lg text-xs font-medium shadow-sm transition-colors active:scale-95 disabled:opacity-40 disabled:bg-neutral-200 disabled:text-neutral-400'>Import to Ledger</button>
                 </div>
               </div>
             </div>
@@ -394,27 +384,24 @@ export default function Home() {
 
         </div>
 
-        <div className="bg-gradient-to-br from-neutral-900 to-neutral-900/80 border border-neutral-800 rounded-3xl p-8 shadow-2xl mt-12 relative overflow-hidden backdrop-blur-md">
-          <div className="absolute top-0 right-0 p-8 opacity-5 transform translate-x-4 -translate-y-4">
-            <Wallet className="w-48 h-48 text-teal-400" />
+        <div className="bg-white border border-neutral-200 rounded-2xl p-6 shadow-sm">
+          <div className="flex items-center gap-2 mb-5 border-b border-neutral-100 pb-4">
+            <Wallet className="w-4 h-4 text-emerald-600" />
+            <h3 className="text-sm font-semibold text-neutral-700">Overview</h3>
           </div>
-          <div className="flex items-center gap-3 mb-6 border-b border-neutral-800/80 pb-4">
-            <Activity className="w-5 h-5 text-teal-400" />
-            <h3 className="text-sm font-bold uppercase tracking-[0.2em] text-neutral-400">Syndicate Financial Telemetry Metrics</h3>
-          </div>
-          
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 relative z-10">
-            <div className="bg-neutral-950/50 border border-neutral-800/50 rounded-2xl p-6 shadow-inner hover:bg-neutral-950/80 transition-colors">
-              <p className="text-[10px] text-neutral-500 font-bold uppercase tracking-widest mb-2">Total Asset Valuation</p>
-              <p className="text-4xl font-black text-teal-400 font-mono tracking-tighter">฿ {calculatedBalance.grossPoolValue.toLocaleString()}</p>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="bg-neutral-50 border border-neutral-100 rounded-xl p-5">
+              <p className="text-xs text-neutral-500 font-medium mb-1.5">Total spent</p>
+              <p className="text-2xl font-bold text-neutral-900">฿ {calculatedBalance.grossPoolValue.toLocaleString()}</p>
             </div>
-            <div className="bg-neutral-950/50 border border-neutral-800/50 rounded-2xl p-6 shadow-inner hover:bg-neutral-950/80 transition-colors">
-              <p className="text-[10px] text-neutral-500 font-bold uppercase tracking-widest mb-2">Active Stakeholders</p>
-              <p className="text-4xl font-black text-neutral-200 font-mono tracking-tighter">{masterMembers.length}</p>
+            <div className="bg-neutral-50 border border-neutral-100 rounded-xl p-5">
+              <p className="text-xs text-neutral-500 font-medium mb-1.5">Members</p>
+              <p className="text-2xl font-bold text-neutral-900">{masterMembers.length}</p>
             </div>
-            <div className="bg-neutral-950/50 border border-neutral-800/50 rounded-2xl p-6 shadow-inner hover:bg-neutral-950/80 transition-colors">
-              <p className="text-[10px] text-neutral-500 font-bold uppercase tracking-widest mb-2">Pending Liquidations</p>
-              <p className="text-4xl font-black text-emerald-400 font-mono tracking-tighter">{Object.values(calculatedBalance.membersTotal).filter(v => v > 0).length}</p>
+            <div className="bg-neutral-50 border border-neutral-100 rounded-xl p-5">
+              <p className="text-xs text-neutral-500 font-medium mb-1.5">People owing</p>
+              <p className="text-2xl font-bold text-neutral-900">{Object.values(calculatedBalance.membersTotal).filter(v => v > 0).length}</p>
             </div>
           </div>
         </div>
