@@ -65,14 +65,12 @@ export default function Home() {
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
-  // คำนวณสรุปยอด (Memoized เพื่อความลื่นไหลและใช้จัดรูปแบบส่งเข้า Sheet)
+  // คำนวณสรุปยอดต่อคน: Name + items + price รวม (Memoized)
   const calculatedBalance = useMemo(() => {
     let membersTotal: { [name: string]: number } = {};
     masterMembers.forEach(m => membersTotal[m] = 0);
-    
+
     let grossPoolValue = 0;
-    let breakdownText = "👑 AURA SPLIT - SOVEREIGN ASSET DISBURSAL:\n=========================================\n";
-    
     billItems.forEach(item => {
       if (item.shared_by.length > 0) {
         const splitPrice = item.price / item.shared_by.length;
@@ -80,36 +78,48 @@ export default function Home() {
         item.shared_by.forEach(m => {
           if (membersTotal[m] !== undefined) membersTotal[m] += splitPrice;
         });
-        breakdownText += `• ${item.item}: ฿${item.price.toLocaleString()} → [ ${item.shared_by.join(', ')} ]\n`;
       }
     });
 
-    breakdownText += "\n💰 LIQUIDATION DIRECTIVES:\n-----------------------------------------\n";
-    const netTotals = Object.entries(membersTotal).map(([name, amount]) => ({ name, amount }));
-    const netOwes = netTotals.filter(t => t.amount > 0).map(t => `@${t.name} ฿${Math.ceil(t.amount).toLocaleString()}`).join('\n');
-    
-    return { membersTotal, grossPoolValue, outputText: breakdownText + netOwes };
+    const personBreakdown = masterMembers
+      .map(name => ({
+        name,
+        items: billItems.filter(i => i.shared_by.includes(name)).map(i => i.item),
+        total: membersTotal[name] || 0,
+      }))
+      .filter(p => p.items.length > 0);
+
+    let outputText = "👑 AURA SPLIT - SOVEREIGN ASSET DISBURSAL:\n=========================================\n";
+    personBreakdown.forEach(p => {
+      outputText += `👤 ${p.name}\n   ${p.items.join(', ')}\n   -----------------------------------------\n   Total: ฿${Math.ceil(p.total).toLocaleString()}\n\n`;
+    });
+
+    return { membersTotal, grossPoolValue, personBreakdown, outputText: outputText.trim() };
   }, [billItems, masterMembers]);
 
-  // ✨ ฟังก์ชัน Sync ข้อมูลลง Google Sheets ของมึงตามโครงสร้างที่ route.ts มึงรองรับ
-  const syncToGoogleSheetsCloud = async (currentItems: ExpenseItem[]) => {
+  // นำผลลัพธ์ที่ติ๊กชื่อไว้ (Name + items + price รวม) ไป import เก็บลง Google Sheets
+  const importSplitToLedger = async () => {
+    if (calculatedBalance.personBreakdown.length === 0) {
+      return alert('Tick at least one member against an item before importing.');
+    }
     try {
       const formData = new FormData();
       formData.append('action', 'save_history');
-      // ส่งค่า chatText เป็นรายการสรุปไอเทมทั้งหมด เพื่อให้เอาไปหยอดลงช่องรายละเอียดใน Sheet มึง
-      const itemsSummary = currentItems.map(i => `${i.item} (${i.price}B) shared by [${i.shared_by.join(',')}]`).join(' | ');
-      formData.append('chatText', itemsSummary || 'Manual Entry Update');
       formData.append('members', masterMembersText);
+      formData.append('chatText', calculatedBalance.outputText);
+      formData.append('itemsJson', JSON.stringify(billItems));
+      formData.append('breakdownJson', JSON.stringify(calculatedBalance.personBreakdown));
 
-      await fetch('/api/gemini', { method: 'POST', body: formData });
-      // เรียกโหลดประวัติเวอร์ชันล่าสุดมาอัปเดตหน้าจอ
-      const loadFormData = new FormData();
-      loadFormData.append('action', 'load_history');
-      const res = await fetch('/api/gemini', { method: 'POST', body: loadFormData });
+      const res = await fetch('/api/gemini', { method: 'POST', body: formData });
       const json = await res.json();
-      if (json.success) setSavedSessions(json.history || []);
+      if (!json.success) {
+        return alert(json.error || 'Failed to import to ledger.');
+      }
+      await loadHistoryFromSheets();
+      alert('Split imported to the ledger.');
     } catch (e) {
-      console.error('Failed to sync data to Apps Script:', e);
+      console.error('Failed to import split to ledger:', e);
+      alert('Failed to import to ledger.');
     }
   };
 
@@ -119,6 +129,7 @@ export default function Home() {
     
     setLoading(true);
     const formData = new FormData();
+    formData.append('action', 'extract_items');
     formData.append('chatText', chatText);
     formData.append('members', masterMembersText);
     if (imageFile) formData.append('image', imageFile);
@@ -134,7 +145,6 @@ export default function Home() {
           shared_by: item.shared_by || []
         }));
         setBillItems(prev => [...prev, ...newItems]);
-        await syncToGoogleSheetsCloud(newItems);
       } else {
         alert(json.error || 'AI interpretation failed.');
       }
@@ -147,15 +157,14 @@ export default function Home() {
   const handleItemChange = (itemId: string, field: 'item' | 'price', value: any) => {
     const updated = billItems.map(item => {
       if (item.id === itemId) {
-        return { 
-          ...item, 
-          [field]: field === 'price' ? (Number(value) || 0) : value 
+        return {
+          ...item,
+          [field]: field === 'price' ? (Number(value) || 0) : value
         };
       }
       return item;
     });
     setBillItems(updated);
-    syncToGoogleSheetsCloud(updated);
   };
 
   const toggleSharedBy = (itemId: string, memberName: string) => {
@@ -168,19 +177,14 @@ export default function Home() {
       return item;
     });
     setBillItems(updated);
-    syncToGoogleSheetsCloud(updated);
   };
 
   const handleAddItem = () => {
-    const updated = [...billItems, { id: `item_${Date.now()}`, item: 'New Ledger Entry', price: 0, shared_by: [] }];
-    setBillItems(updated);
-    syncToGoogleSheetsCloud(updated);
+    setBillItems(prev => [...prev, { id: `item_${Date.now()}`, item: 'New Ledger Entry', price: 0, shared_by: [] }]);
   };
 
   const handleDeleteItem = (itemId: string) => {
-    const updated = billItems.filter(i => i.id !== itemId);
-    setBillItems(updated);
-    syncToGoogleSheetsCloud(updated);
+    setBillItems(prev => prev.filter(i => i.id !== itemId));
   };
 
   const clearHistoryCloud = async () => {
@@ -379,8 +383,11 @@ export default function Home() {
             <div className="bg-neutral-900/90 border border-neutral-800 rounded-3xl p-6 shadow-2xl border-t-2 border-t-teal-500/80 backdrop-blur-md">
               <div className="flex items-center gap-3 mb-5 text-neutral-400 font-bold tracking-widest text-xs uppercase"><ArrowLeftRight className="w-4 h-4 text-teal-400" />📊 Liquidation Digest Terminal</div>
               <div className="relative group">
-                <textarea className="w-full p-5 border border-neutral-800 bg-neutral-950 rounded-2xl text-neutral-300 text-xs font-mono leading-relaxed resize-none shadow-inner" rows={5} value={calculatedBalance.outputText} readOnly />
-                <button onClick={() => { navigator.clipboard.writeText(calculatedBalance.outputText); alert('Statement package successfully synchronized to clipboard.'); }} disabled={!calculatedBalance.outputText} className='absolute bottom-4 right-4 bg-neutral-900/90 hover:bg-neutral-800 border border-neutral-800 text-teal-400 hover:text-teal-300 py-2.5 px-4 rounded-xl text-[10px] font-bold uppercase tracking-widest shadow-2xl transition-all duration-200 active:scale-95'>Copy Digest Output</button>
+                <textarea className="w-full p-5 border border-neutral-800 bg-neutral-950 rounded-2xl text-neutral-300 text-xs font-mono leading-relaxed resize-none shadow-inner" rows={10} value={calculatedBalance.outputText} readOnly />
+                <div className="absolute bottom-4 right-4 flex gap-2">
+                  <button onClick={() => { navigator.clipboard.writeText(calculatedBalance.outputText); alert('Statement package successfully synchronized to clipboard.'); }} disabled={!calculatedBalance.outputText} className='bg-neutral-900/90 hover:bg-neutral-800 border border-neutral-800 text-teal-400 hover:text-teal-300 py-2.5 px-4 rounded-xl text-[10px] font-bold uppercase tracking-widest shadow-2xl transition-all duration-200 active:scale-95 disabled:opacity-40'>Copy Digest Output</button>
+                  <button onClick={importSplitToLedger} disabled={calculatedBalance.personBreakdown.length === 0} className='bg-teal-500 hover:brightness-110 text-neutral-950 py-2.5 px-4 rounded-xl text-[10px] font-bold uppercase tracking-widest shadow-2xl transition-all duration-200 active:scale-95 disabled:opacity-40 disabled:bg-neutral-800 disabled:text-neutral-600'>Import to Ledger</button>
+                </div>
               </div>
             </div>
           </div>
